@@ -435,6 +435,9 @@ class Impedance(_ElectricAndMagneticReceiver):
             gfu_h_v, gfm_h_v = f._hDeriv(src, None, gh_v, adjoint=True)
             gfu_e_v, gfm_e_v = f._eDeriv(src, None, ge_v, adjoint=True)
 
+            if mesh.dim == 1:
+                gfu_h_v = np.asarray(gfu_h_v).reshape(gfu_e_v.shape)
+
             return gfu_h_v + gfu_e_v, gfm_h_v + gfm_e_v
 
         if mesh.dim == 3:
