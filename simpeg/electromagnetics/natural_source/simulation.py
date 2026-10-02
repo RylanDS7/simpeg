@@ -122,11 +122,53 @@ class Simulation1DElectricField(BaseFDEMSimulation):
         ------
         NotImplementedError
         """
-        msg = (
-            "The getJ method hasn't been implemented for the "
-            f"{type(self).__name__} yet."
-        )
-        raise NotImplementedError(msg)
+
+        self.model = m
+
+        if getattr(self, "_Jmatrix", None) is None:
+            if f is None:
+                f = self.fields(m)
+
+            Ainv = self.Ainv
+            m_size = self.model.size
+
+            Jmatrix = np.zeros((self.survey.nD, m_size))
+
+            # Get dict of flat array slices for each source-receiver pair in the survey
+            survey_slices = self.survey.get_all_slices()
+
+            for A_i, freq in zip(Ainv, self.survey.frequencies):
+                for src in self.survey.get_sources_by_frequency(freq):
+                    u_src = f[src, self._solutionType]
+
+                    for rx in src.receiver_list:
+                        v = np.eye(rx.nD, dtype=float)
+
+                        df_duT, df_dmT = rx.evalDeriv(
+                            src, self.mesh, f, v=v, adjoint=True
+                        )
+
+                        df_duT = np.hstack([df_duT])
+                        ATinvdf_duT = A_i * df_duT
+                        dA_dmT = self.getADeriv(freq, u_src, ATinvdf_duT, adjoint=True)
+                        dRHS_dmT = self.getRHSDeriv(
+                            freq, src, ATinvdf_duT, adjoint=True
+                        )
+                        du_dmT = -dA_dmT
+
+                        if not isinstance(dRHS_dmT, Zero):
+                            du_dmT += dRHS_dmT
+                        if not isinstance(df_dmT[0], Zero):
+                            du_dmT += np.hstack(df_dmT)
+
+                        block = np.array(du_dmT, dtype=complex).real.T
+
+                        src_rx_slice = survey_slices[src, rx]
+                        Jmatrix[src_rx_slice] = block
+
+            self._Jmatrix = Jmatrix
+
+        return self._Jmatrix
 
 
 class Simulation1DMagneticField(BaseFDEMSimulation):
